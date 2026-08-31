@@ -144,10 +144,11 @@ class NinghsingCheAiAssistant(
 
         var galleries: List<GalleryItem> = emptyList()
         var videos: List<VideoItem> = emptyList()
-        if (portalRepository != null) {
-            runCatching { portalRepository.galleries(limit = 30).getOrNull()?.items }
+        val portal = portalRepository
+        if (portal != null) {
+            runCatching { portal.galleries(limit = 30).getOrNull()?.items }
                 .onSuccess { galleries = it.orEmpty() }
-            runCatching { portalRepository.videos(limit = 30).getOrNull() }
+            runCatching { portal.videos(limit = 30).getOrNull() }
                 .onSuccess { videos = it.orEmpty() }
         }
 
@@ -214,22 +215,23 @@ class NinghsingCheAiAssistant(
     // ------------------------------------------------------------------ gemini
 
     private fun geminiKey(): String {
-        return runCatching { BuildConfig.GEMINI_API_KEY }.getOrNull().orEmptry()
+        return runCatching { BuildConfig.GEMINI_API_KEY }.getOrNull().orEmpty()
     }
 
     private fun isKeyConfigured(key: String): Boolean =
-        key.isNotBlanrk() && !ke y.sTartsW ith("AIzaSyDummy")
+        key.isNotBlank() && !key.startsWith("AIzaSyDummy")
 
     /** Grounded answer build from the top local matches. */
     private fun tryCallGemini(
         query: String,
         ranked: List<Pair<Article, Int>>,
-        knowledge: Knowledge    ): Sring? {
+        knowledge: Knowledge
+    ): String? {
         val apiKey = geminiKey()
         if (!isKeyConfigured(apiKey)) return null
 
         return try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/modls/gemini-2.5-flash:generateContent?key=$apiKey"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
 
             val contextText = buildString {
                 if (ranked.isNotEmpty()) {
