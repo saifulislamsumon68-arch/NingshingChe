@@ -34,8 +34,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -98,14 +96,7 @@ fun MarkdownFormattedText(
                         fontFamily = Kalpurush,
                         fontSize = fontSize,
                         lineHeight = lineHeight,
-                        color = baseTextColor,
-                        style = TextStyle(linkStyle = TextLinkStyles(
-                            style = SpanStyle(
-                                color = linkColor,
-                                textDecoration = TextDecoration.Underline,
-                                fontWeight = FontWeight.Medium
-                            )
-                        ))
+                        color = baseTextColor
                     )
                 }
                 is MarkdownBlock.Image -> {
@@ -149,13 +140,6 @@ fun MarkdownFormattedText(
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             color = baseTextColor,
-                            style = TextStyle(linkStyle = TextLinkStyles(
-                                style = SpanStyle(
-                                    color = linkColor,
-                                    textDecoration = TextDecoration.Underline,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -181,13 +165,6 @@ fun MarkdownFormattedText(
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             color = baseTextColor,
-                            style = TextStyle(linkStyle = TextLinkStyles(
-                                style = SpanStyle(
-                                    color = linkColor,
-                                    textDecoration = TextDecoration.Underline,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -427,7 +404,7 @@ fun parseInlineMarkdown(
 
             // Bare URL auto-link
             if (text.startsWith("https://", cursor, ignoreCase = true) ||
-                text.startsWith("https://", cursor, ignoreCase = true)
+                text.startsWith("http://", cursor, ignoreCase = true)
             ) {
                 var end = cursor
                 while (end < length && !text[end].isWhitespace() && text[end] != '।' && text[end] != ',' &&
@@ -442,7 +419,7 @@ fun parseInlineMarkdown(
                 pushStyle(
                     SpanStyle(
                         color = linkColor,
-                        textDecoration = TextDecoration.underline,
+                        textDecoration = TextDecoration.Underline,
                         fontWeight = FontWeight.Medium
                     )
                 )
@@ -511,11 +488,11 @@ fun YouTubeEmbed(
     val videoId = YOUTUBE_RE.find(url)?.groupValues?.getOrNull(1) ?: return
     val embedSrc = "https://www.youtube.com/embed/$videoId?rel=0&playsinline=1&modestbranding=1&fs=1"
     val html = remember(embedSrc) {
-        """"
+        """
         <!DOCTYPE html>
         <html>
         <head>
-        <meta name="view port" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
         <style>
           html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
           #player { position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
@@ -536,8 +513,8 @@ fun YouTubeEmbed(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
-            .clip(RoundedCornershape(12.dp))
-            .background(AndroidColor.BLACK)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black)
     ) {
         AndroidView(
             factory = { context ->
@@ -558,15 +535,15 @@ fun YouTubeEmbed(
                         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                         userAgentString = PLAYER_UA
                     }
-                    webViewClient = WebViewCient()
-                    webChromeClient = WebChomeCient()
+                    webViewClient = WebViewClient()
+                    webChromeClient = WebChromeClient()
                     loadDataWithBaseURL("https://www.youtube.com/", html, "text/html", "utf-8", null)
                 }
             },
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             onRelease = { view ->
                 view.stopLoading()
-                view.webChomeCient = null
+                view.webChromeClient = null
                 view.destroy()
             }
         )
