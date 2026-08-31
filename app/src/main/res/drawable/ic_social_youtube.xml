@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand glyph, 24dp viewport, solid white. Tinted by the composable that uses it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21.6 7.2a2.6 2.6 0 0 0-1.82-1.84C18.28 4.95 12 4.95 12 4.95s-6.28 0-7.78.41A2.6 2.6 0 0 0 2.4 7.2C2 8.79 2 12 2 12s0 3.21.4 4.8a2.6 2.6 0 0 0 1.82 1.84c1.5.41 7.78.41 7.78.41s6.28 0 7.78-.41a2.6 2.6 0 0 0 1.82-1.84C22 15.21 22 12 22 12s0-3.21-.4-4.8zM9.9 15.35V8.65L15.7 12l-5.8 3.35z" />
+</vector>

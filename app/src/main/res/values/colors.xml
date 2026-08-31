@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFFF8C00</color>
+    <color name="purple_500">#FF6E2B19</color>
+    <color name="purple_700">#FF4B2E2B</color>
+    <color name="teal_200">#FFFFD700</color>
+    <color name="teal_700">#FF6E2B19</color>
+    <color name="black">#FF111827</color>
+    <color name="white">#FFFFFAF2</color>
+    <color name="portal_maroon">#FF6E2B19</color>
+    <color name="portal_saffron">#FFFF8C00</color>
+    <color name="portal_cream">#FFFFFAF2</color>
+</resources>

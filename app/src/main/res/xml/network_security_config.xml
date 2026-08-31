@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transport hardening for the public reader.
+
+  Cleartext HTTP is refused everywhere, including the Supabase REST host, so a
+  hostile network cannot downgrade an API call. Certificate pinning is
+  deliberately NOT used: Supabase sits behind a managed edge whose leaf
+  certificates rotate, and a pin would break every installed app on rotation.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">slcpvmpsynkqdozvlsii.supabase.co</domain>
+        <domain includeSubdomains="true">ningshingche.com</domain>
+        <domain includeSubdomains="true">api.imgbb.com</domain>
+    </domain-config>
+</network-security-config>
