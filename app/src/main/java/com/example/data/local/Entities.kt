@@ -50,3 +50,15 @@ data class SearchHistoryEntity(
     val query: String,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+/** A single AI chat message, persisted so conversations survive app restarts. */
+@Entity(tableName = "ai_chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey val id: String,
+    val text: String,
+    val isUser: Boolean,
+    val timestamp: Long = System.currentTimeMillis(),
+    /** JSON array of `{articleId,title,author,category,snippet}` objects. */
+    val citationsRaw: String = "[]",
+    val offerOnline: Boolean = false
+)

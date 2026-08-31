@@ -1,11 +1,19 @@
 package com.example.ui.components
 
+import android.annotation.SuppressLint
+import android.graphics.Color as AndroidColor
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,27 +30,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.ui.theme.Kalpurush
 
+private val YOUTUBE_RE = Regex(
+    """https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/|embed/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})"""
+)
+
+/**
+ * Renders markdown from the AI assistant with full rich-media support:
+ *  - **bold**, *italic*, `code`, headings, lists, quotes and code blocks
+ *  - `[links](url)` — drawn in the primary colour, underlined and tappable
+ *  - `![alt](image-url)` — loads the image inline (Coil)
+ *  - a bare YouTube URL on its own line — embeds the player (iframe) inline
+ */
 @Composable
 fun MarkdownFormattedText(
     markdown: String,
     modifier: Modifier = Modifier,
     baseTextColor: Color = MaterialTheme.colorScheme.onSurface,
     fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 22.sp
+    lineHeight: TextUnit = 22.sp,
+    onLinkClick: (String) -> Unit = {}
 ) {
     val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
+    val linkColor = MaterialTheme.colorScheme.primary
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -57,7 +83,7 @@ fun MarkdownFormattedText(
                         else -> 15.sp
                     }
                     Text(
-                        text = parseInlineMarkdown(block.text, baseTextColor),
+                        text = parseInlineMarkdown(block.text, baseTextColor, linkColor, onLinkClick),
                         fontFamily = Kalpurush,
                         fontWeight = FontWeight.Bold,
                         fontSize = headFontSize,
@@ -68,12 +94,39 @@ fun MarkdownFormattedText(
                 }
                 is MarkdownBlock.Paragraph -> {
                     Text(
-                        text = parseInlineMarkdown(block.text, baseTextColor),
+                        text = parseInlineMarkdown(block.text, baseTextColor, linkColor, onLinkClick),
                         fontFamily = Kalpurush,
                         fontSize = fontSize,
                         lineHeight = lineHeight,
-                        color = baseTextColor
+                        color = baseTextColor,
+                        style = TextStyle(linkStyle = TextLinkStyles(
+                            style = SpanStyle(
+                                color = linkColor,
+                                textDecoration = TextDecoration.Underline,
+                                fontWeight = FontWeight.Medium
+                            )
+                        ))
                     )
+                }
+                is MarkdownBlock.Image -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    ) {
+                        PortalAsyncImage(
+                            url = block.url,
+                            contentDescription = block.alt,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                        )
+                    }
+                }
+                is MarkdownBlock.Video -> {
+                    YouTubeEmbed(url = block.url)
                 }
                 is MarkdownBlock.BulletItem -> {
                     Row(
@@ -91,11 +144,18 @@ fun MarkdownFormattedText(
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                         Text(
-                            text = parseInlineMarkdown(block.text, baseTextColor),
+                            text = parseInlineMarkdown(block.text, baseTextColor, linkColor, onLinkClick),
                             fontFamily = Kalpurush,
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             color = baseTextColor,
+                            style = TextStyle(linkStyle = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = linkColor,
+                                    textDecoration = TextDecoration.Underline,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -116,11 +176,18 @@ fun MarkdownFormattedText(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = parseInlineMarkdown(block.text, baseTextColor),
+                            text = parseInlineMarkdown(block.text, baseTextColor, linkColor, onLinkClick),
                             fontFamily = Kalpurush,
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             color = baseTextColor,
+                            style = TextStyle(linkStyle = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = linkColor,
+                                    textDecoration = TextDecoration.Underline,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -138,7 +205,7 @@ fun MarkdownFormattedText(
                                 .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
                         )
                         Text(
-                            text = parseInlineMarkdown(block.text, baseTextColor),
+                            text = parseInlineMarkdown(block.text, baseTextColor, linkColor, onLinkClick),
                             fontFamily = Kalpurush,
                             fontStyle = FontStyle.Italic,
                             fontSize = fontSize,
@@ -183,6 +250,8 @@ private sealed interface MarkdownBlock {
     data class NumberedItem(val number: String, val text: String) : MarkdownBlock
     data class BlockQuote(val text: String) : MarkdownBlock
     data class CodeBlock(val code: String) : MarkdownBlock
+    data class Image(val url: String, val alt: String) : MarkdownBlock
+    data class Video(val url: String) : MarkdownBlock
     object Divider : MarkdownBlock
 }
 
@@ -256,6 +325,26 @@ private fun parseMarkdownBlocks(raw: String): List<MarkdownBlock> {
             continue
         }
 
+        // Image ![alt](url) — block-level only.
+        val imageMatch = Regex("""^!\[([^\]]*)\]\(([^)\s]+)\)$""").find(trimmed)
+        if (imageMatch != null) {
+            blocks.add(
+                MarkdownBlock.Image(
+                    url = imageMatch.groupValues[2].trim(),
+                    alt = imageMatch.groupValues[1].trim().ifBlank { "ছবি" }
+                )
+            )
+            i++
+            continue
+        }
+
+        // Bare YouTube URL on its own line → inline iframe embed.
+        if (YOUTUBE_RE.containsMatchIn(trimmed)) {
+            blocks.add(MarkdownBlock.Video(trimmed))
+            i++
+            continue
+        }
+
         // Regular Paragraph
         val paragraphLines = mutableListOf(line)
         i++
@@ -267,7 +356,9 @@ private fun parseMarkdownBlocks(raw: String): List<MarkdownBlock> {
                 nextTrimmed.startsWith("```") ||
                 nextTrimmed.startsWith(">") ||
                 nextTrimmed == "---" ||
-                Regex("""^(\*|-|•|\d+[.)])\s+""").containsMatchIn(nextTrimmed)
+                Regex("""^(\*|-|•|\d+[.)])\s+""").containsMatchIn(nextTrimmed) ||
+                YOUTUBE_RE.containsMatchIn(nextTrimmed) ||
+                Regex("""^!\[[^\]]*\]\([^)\s]+\)$""").containsMatchIn(nextTrimmed)
             ) {
                 break
             }
@@ -281,21 +372,93 @@ private fun parseMarkdownBlocks(raw: String): List<MarkdownBlock> {
 }
 
 /**
- * Parses inline markdown elements like **bold**, *italic*, `code` into an AnnotatedString.
+ * Parses inline markdown: **bold**, *italic*, `code`, `[link](url)` and bare http(s)
+ * URLs into an [AnnotatedString]. Links are tappable via [onLinkClick].
  */
-fun parseInlineMarkdown(text: String, defaultColor: Color): AnnotatedString {
+fun parseInlineMarkdown(
+    text: String,
+    defaultColor: Color,
+    linkColor: Color = Color(0xFF0D6EFD),
+    onLinkClick: (String) -> Unit = {}
+): AnnotatedString {
     return buildAnnotatedString {
         var cursor = 0
         val length = text.length
 
         while (cursor < length) {
+            // Image reference ![alt](url) — keep alt text only.
+            if (text.startsWith("![", cursor)) {
+                val closeParen = text.indexOf(')', cursor)
+                val closeBracket = text.indexOf(']', cursor)
+                if (closeBracket != -1 && closeParen != -1 && closeBracket < closeParen) {
+                    val alt = text.substring(cursor + 2, closeBracket)
+                    append(alt)
+                    cursor = closeParen + 1
+                    continue
+                }
+            }
+
+            // Link [label](url)
+            if (text[cursor] == '[') {
+                val closeBracket = text.indexOf(']', cursor + 1)
+                if (closeBracket != -1 && closeBracket + 1 < length && text[closeBracket + 1] == '(') {
+                    val closeParen = text.indexOf(')', closeBracket + 1)
+                    if (closeParen != -1) {
+                        val label = text.substring(cursor + 1, closeBracket)
+                        val url = text.substring(closeBracket + 2, closeParen).trim()
+                        pushLink(
+                            LinkAnnotation.Clickable(tag = url, linkInteractionListener = { _ -> onLinkClick(url) })
+                        )
+                        pushStyle(
+                            SpanStyle(
+                                color = linkColor,
+                                textDecoration = TextDecoration.Underline,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                        append(if (label.isBlank()) url else label)
+                        pop()
+                        pop()
+                        cursor = closeParen + 1
+                        continue
+                    }
+                }
+            }
+
+            // Bare URL auto-link
+            if (text.startsWith("https://", cursor, ignoreCase = true) ||
+                text.startsWith("https://", cursor, ignoreCase = true)
+            ) {
+                var end = cursor
+                while (end < length && !text[end].isWhitespace() && text[end] != '।' && text[end] != ',' &&
+                    !(end > cursor && text[end] == ')')
+                ) {
+                    end++
+                }
+                val url = text.substring(cursor, end)
+                pushLink(
+                    LinkAnnotation.Clickable(tag = url, linkInteractionListener = { _ -> onLinkClick(url) })
+                )
+                pushStyle(
+                    SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.underline,
+                        fontWeight = FontWeight.Medium
+                    )
+                )
+                append(url)
+                pop()
+                pop()
+                cursor = end
+                continue
+            }
+
             // Bold with ** or __
             if (cursor + 1 < length && (text.startsWith("**", cursor) || text.startsWith("__", cursor))) {
                 val marker = text.substring(cursor, cursor + 2)
                 val endIndex = text.indexOf(marker, cursor + 2)
                 if (endIndex != -1) {
                     val boldContent = text.substring(cursor + 2, endIndex)
-                    val start = length
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
                     append(boldContent)
                     pop()
@@ -337,3 +500,78 @@ fun parseInlineMarkdown(text: String, defaultColor: Color): AnnotatedString {
         }
     }
 }
+
+/** Inline YouTube player — a WebView hosting the official iframe embed. */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun YouTubeEmbed(
+    url: String,
+    modifier: Modifier = Modifier
+) {
+    val videoId = YOUTUBE_RE.find(url)?.groupValues?.getOrNull(1) ?: return
+    val embedSrc = "https://www.youtube.com/embed/$videoId?rel=0&playsinline=1&modestbranding=1&fs=1"
+    val html = remember(embedSrc) {
+        """"
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="view port" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <style>
+          html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+          #player { position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
+        </style>
+        </head>
+        <body>
+        <iframe id="player"
+            src="$embedSrc"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowfullscreen></iframe>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornershape(12.dp))
+            .background(AndroidColor.BLACK)
+    ) {
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    setBackgroundColor(AndroidColor.BLACK)
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        mediaPlaybackRequiresUserGesture = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        builtInZoomControls = false
+                        displayZoomControls = false
+                        mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                        userAgentString = PLAYER_UA
+                    }
+                    webViewClient = WebViewCient()
+                    webChromeClient = WebChomeCient()
+                    loadDataWithBaseURL("https://www.youtube.com/", html, "text/html", "utf-8", null)
+                }
+            },
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            onRelease = { view ->
+                view.stopLoading()
+                view.webChomeCient = null
+                view.destroy()
+            }
+        )
+    }
+}
+
+private const val PLAYER_UA =
+    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"

@@ -107,8 +107,8 @@ class NinghsingCheApp : Application(), ImageLoaderFactory {
         supabaseClient = SupabaseClient(this)
         dashboardRepository = DashboardRepository(this, supabaseClient, database)
         articleRepository = ArticleRepository(database, supabaseClient, websiteClient)
-        aiAssistant = NinghsingCheAiAssistant(articleRepository)
         portalRepository = PortalProvider.repository()
+        aiAssistant = NinghsingCheAiAssistant(articleRepository, portalRepository)
     }
 
     companion object {

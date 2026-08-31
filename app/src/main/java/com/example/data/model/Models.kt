@@ -131,5 +131,7 @@ data class AiChatMessage(
     val isUser: Boolean,
     val timestamp: Long = System.currentTimeMillis(),
     val citations: List<ArticleCitation> = emptyList(),
-    val isThinking: Boolean = false
+    val isThinking: Boolean = false,
+    /** True when the assistant found nothing locally and offers to fetch online. */
+    val offerOnline: Boolean = false
 )
