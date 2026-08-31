@@ -174,11 +174,13 @@ class ArticleRepository(
             }
         }
 
-        // 2. Fallback to website scraping if Supabase is unavailable or empty
+        // Supabase is the only source of truth. Never scrape the public website.
         _syncState.value = _syncState.value.copy(
-            isSyncing = true,
-            lastMessage = "নিংশিংচে.কম থেকে হালনাগাদ হচ্ছে..."
+            isSyncing = false,
+            lastMessage = "সুপাবেজে নতুন ডাটা পাওয়া যায়নি; অফলাইন ক্যাশ ব্যবহার করা হচ্ছে।"
         )
+        return Result.success(articleDao.getAllArticles().first().size)
+        /*
         val result = websiteClient.syncCatalog()
         return result.fold(
             onSuccess = { listing ->
@@ -211,6 +213,7 @@ class ArticleRepository(
                 Result.failure(error)
             }
         )
+        */
     }
 
     fun syncFromWebsite() {

@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
+import android.text.Html
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -371,6 +372,18 @@ private fun parseMarkdownBlocks(raw: String): List<MarkdownBlock> {
     return blocks
 }
 
+private fun normalizeRichText(raw: String): String {
+    val htmlLike = raw
+        .replace("<.b>", "</b>", ignoreCase = true)
+        .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\\n")
+        .replace(Regex("</?(strong|b)>", RegexOption.IGNORE_CASE), "**")
+        .replace(Regex("</?(em|i)>", RegexOption.IGNORE_CASE), "*")
+        .replace(Regex("</?(u|s|strike|code|p|div)>\\s*", RegexOption.IGNORE_CASE), "")
+    // Html.fromHtml decodes &lt;, &gt;, &amp;, Bengali entities, etc. after the
+    // formatting markers have been recovered above.
+    return Html.fromHtml(htmlLike, Html.FROM_HTML_MODE_LEGACY).toString()
+}
+
 /**
  * Parses inline markdown: **bold**, *italic*, `code`, `[link](url)` and bare http(s)
  * URLs into an [AnnotatedString]. Links are tappable via [onLinkClick].
@@ -381,7 +394,11 @@ fun parseInlineMarkdown(
     linkColor: Color = Color(0xFF0D6EFD),
     onLinkClick: (String) -> Unit = {}
 ): AnnotatedString {
+    // AI providers sometimes return HTML (or HTML-escaped HTML) instead of Markdown.
+    // Normalize it before parsing so users see styled text, never literal tags/entities.
+    val normalizedText = normalizeRichText(text)
     return buildAnnotatedString {
+        val text = normalizedText
         var cursor = 0
         val length = text.length
 

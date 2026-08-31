@@ -399,6 +399,14 @@ fun ChatMessageItem(
             }
         }
     } else {
+        var visibleText by remember(message.id) { mutableStateOf("") }
+        LaunchedEffect(message.id, message.text) {
+            visibleText = ""
+            message.text.forEachIndexed { index, _ ->
+                visibleText = message.text.substring(0, index + 1)
+                delay(12L)
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start
@@ -415,7 +423,7 @@ fun ChatMessageItem(
                 ) {
                     Box(modifier = Modifier.padding(14.dp)) {
                         MarkdownFormattedText(
-                            markdown = message.text,
+                            markdown = visibleText,
                             baseTextColor = MaterialTheme.colorScheme.onSurface
                         )
                     }
