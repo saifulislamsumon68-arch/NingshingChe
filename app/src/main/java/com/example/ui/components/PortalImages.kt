@@ -28,7 +28,6 @@ fun PortalAsyncImage(
             .addHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
             .error(R.drawable.ic_ningshingche_logo)
             .fallback(R.drawable.ic_ningshingche_logo)
-            .placeholder(R.drawable.ic_ningshingche_logo)
             .build()
     }
     AsyncImage(
