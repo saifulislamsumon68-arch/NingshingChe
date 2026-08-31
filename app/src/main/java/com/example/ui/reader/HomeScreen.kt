@@ -3,6 +3,7 @@ package com.example.ui.reader
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -449,8 +452,8 @@ private fun HomeContent(
 }
 
 /**
- * Auto-sliding Hero Carousel.
- * Cycles every 3.5s unless being scrolled by user.
+ * Editorial Hero Section.
+ * Clean, user-driven carousel with smooth swiping and indicators.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -459,23 +462,23 @@ private fun HeroCarousel(
     onArticleClick: (String) -> Unit
 ) {
     if (hero.isEmpty()) return
-    val pagerState = rememberPagerState(pageCount = { hero.size })
 
-    // Auto-slide effect
-    LaunchedEffect(pagerState.pageCount, hero.size) {
-        if (hero.size > 1) {
-            while (true) {
-                delay(3500)
-                if (!pagerState.isScrollInProgress) {
-                    val nextPage = (pagerState.currentPage + 1) % hero.size
-                    pagerState.animateScrollToPage(
-                        page = nextPage,
-                        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
-                    )
-                }
-            }
+    if (hero.size == 1) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = EditorialSpace.gutter)
+        ) {
+            HeroArticleCard(
+                article = hero[0],
+                onClick = { onArticleClick(hero[0].id) }
+            )
         }
+        return
     }
+
+    val pagerState = rememberPagerState(pageCount = { hero.size })
+    val coroutineScope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalPager(
@@ -489,25 +492,35 @@ private fun HeroCarousel(
                 onClick = { onArticleClick(hero[page].id) }
             )
         }
-        if (hero.size > 1) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = EditorialSpace.sm),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                repeat(hero.size) { index ->
-                    val selected = pagerState.currentPage == index
-                    val tokens = LocalEditorialTokens.current
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 3.dp)
-                            .size(width = if (selected) 20.dp else 6.dp, height = 6.dp)
-                            .clip(CircleShape)
-                            .background(if (selected) tokens.accent else tokens.ruleStrong)
-                    )
-                }
+
+        // Sleek interactive indicator pills
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = EditorialSpace.sm, bottom = EditorialSpace.xs),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val tokens = LocalEditorialTokens.current
+            repeat(hero.size) { index ->
+                val selected = pagerState.currentPage == index
+                val width by animateDpAsState(
+                    targetValue = if (selected) 22.dp else 7.dp,
+                    label = "hero_dot_width"
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 3.dp)
+                        .height(6.dp)
+                        .width(width)
+                        .clip(CircleShape)
+                        .background(if (selected) tokens.accent else tokens.ruleStrong.copy(alpha = 0.5f))
+                        .clickable {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        }
+                )
             }
         }
     }

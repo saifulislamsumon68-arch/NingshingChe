@@ -1,6 +1,5 @@
 package com.example.ui.editorial
 
-import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -17,20 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
-import com.example.R
+import com.example.ui.components.PortalAsyncImage
 import com.example.ui.components.normalizePortalImageUrl
 
 /**
- * Loads the image immediately when the composable enters the composition.
- *
- * This intentionally does not use viewport/geometry-based lazy loading. The previous
- * gate delayed requests in scrolling lists and made images appear too slowly. Coil's
- * memory and disk caches still prevent unnecessary downloads.
+ * Direct image component for editorial and reader views.
+ * Loads immediately via Coil without viewport gating or delay.
  */
 @Composable
 fun LazyImage(
@@ -46,33 +38,13 @@ fun LazyImage(
         return
     }
 
-    val context = LocalContext.current
-    val request = remember(cleaned) {
-        ImageRequest.Builder(context)
-            .data(cleaned)
-            .crossfade(true)
-            .addHeader("Referer", "https://ningshingche.com/")
-            .addHeader("User-Agent", PORTAL_IMAGE_UA)
-            .addHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-            .error(R.drawable.ic_ningshingche_logo)
-            .fallback(R.drawable.ic_ningshingche_logo)
-            .build()
-    }
-
-    val painter = rememberAsyncImagePainter(model = request)
     Box(modifier = modifier.clip(shape)) {
-        when (painter.state) {
-            is AsyncImagePainter.State.Success -> ComposeImage(
-                painter = painter,
-                contentDescription = contentDescription,
-                contentScale = contentScale,
-                modifier = Modifier.fillMaxSize()
-            )
-            is AsyncImagePainter.State.Error -> ImagePlaceholder(
-                modifier = Modifier.fillMaxSize(), shape = shape, broken = true
-            )
-            else -> ShimmerPlaceholder(modifier = Modifier.fillMaxSize())
-        }
+        PortalAsyncImage(
+            url = cleaned,
+            contentDescription = contentDescription,
+            contentScale = contentScale,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -103,6 +75,3 @@ fun ImagePlaceholder(
         )
     }
 }
-
-internal const val PORTAL_IMAGE_UA =
-    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"

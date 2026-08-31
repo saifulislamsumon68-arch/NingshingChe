@@ -42,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,6 +88,11 @@ fun AiAssistantScreen(
     LaunchedEffect(Unit) {
         delay(1000L) // Minimum 1 second skeleton view
         isSkeletonLoading = false
+    }
+
+    val initialRenderedIds = remember { messages.map { it.id }.toSet() }
+    var animatedMessageIds by rememberSaveable {
+        mutableStateOf(initialRenderedIds + "welcome")
     }
 
     var inputQuery by remember { mutableStateOf("") }
@@ -214,9 +220,16 @@ fun AiAssistantScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            items(messages) { message ->
+            items(messages, key = { it.id }) { message ->
+                val shouldAnimate = !message.isUser && message.id !in animatedMessageIds
                 ChatMessageItem(
                     message = message,
+                    shouldAnimate = shouldAnimate,
+                    onAnimationFinished = {
+                        if (message.id !in animatedMessageIds) {
+                            animatedMessageIds = animatedMessageIds + message.id
+                        }
+                    },
                     onCitationClick = {
                         focusManager.clearFocus()
                         onArticleClick(it)
@@ -375,6 +388,8 @@ fun AiAssistantScreen(
 @Composable
 fun ChatMessageItem(
     message: AiChatMessage,
+    shouldAnimate: Boolean = false,
+    onAnimationFinished: () -> Unit = {},
     onCitationClick: (String) -> Unit
 ) {
     if (message.isUser) {
@@ -399,14 +414,27 @@ fun ChatMessageItem(
             }
         }
     } else {
-        var visibleText by remember(message.id) { mutableStateOf("") }
-        LaunchedEffect(message.id, message.text) {
-            visibleText = ""
-            message.text.forEachIndexed { index, _ ->
-                visibleText = message.text.substring(0, index + 1)
-                delay(12L)
+        var visibleText by remember(message.id, shouldAnimate) {
+            mutableStateOf(if (shouldAnimate) "" else message.text)
+        }
+
+        LaunchedEffect(message.id, shouldAnimate) {
+            if (shouldAnimate) {
+                val total = message.text.length
+                if (total == 0) {
+                    onAnimationFinished()
+                    return@LaunchedEffect
+                }
+                for (index in message.text.indices) {
+                    visibleText = message.text.substring(0, index + 1)
+                    delay(10L)
+                }
+                onAnimationFinished()
+            } else {
+                visibleText = message.text
             }
         }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start
@@ -419,11 +447,15 @@ fun ChatMessageItem(
                     shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    shadowElevation = 1.dp
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.clickable(enabled = shouldAnimate) {
+                        visibleText = message.text
+                        onAnimationFinished()
+                    }
                 ) {
                     Box(modifier = Modifier.padding(14.dp)) {
                         MarkdownFormattedText(
-                            markdown = visibleText,
+                            markdown = if (shouldAnimate && visibleText.isNotEmpty()) visibleText else message.text,
                             baseTextColor = MaterialTheme.colorScheme.onSurface
                         )
                     }

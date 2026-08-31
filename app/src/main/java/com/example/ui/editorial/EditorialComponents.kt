@@ -6,9 +6,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.example.ui.components.PortalAsyncImage
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -164,7 +166,7 @@ fun SectionHeader(
     }
 }
 
-/** Coil image with a shimmering placeholder and a graceful error state. */
+/** Coil image with a graceful placeholder and direct loading. */
 @Composable
 fun EditorialImage(
     url: String,
@@ -173,15 +175,11 @@ fun EditorialImage(
     contentScale: ContentScale = ContentScale.Crop,
     shape: Shape = RoundedCornerShape(EditorialShape.thumb)
 ) {
-    // Delegates to LazyImage so every image in the reader gets viewport-gated
-    // loading plus a shimmer skeleton. Blank URLs fall back to a reserved
-    // placeholder there, which keeps the layout from collapsing.
-    LazyImage(
+    PortalAsyncImage(
         url = url,
         contentDescription = contentDescription,
-        modifier = modifier,
-        contentScale = contentScale,
-        shape = shape
+        modifier = modifier.clip(shape),
+        contentScale = contentScale
     )
 }
 
@@ -309,57 +307,101 @@ fun HeroArticleCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalEditorialTokens.current
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(EditorialShape.card),
-        colors = CardDefaults.cardColors(containerColor = LocalEditorialTokens.current.surfaceSunken),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = tokens.surfaceSunken),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, tokens.rule.copy(alpha = 0.6f)),
         modifier = modifier.fillMaxWidth()
     ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
-            LazyImage(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 10f)
+        ) {
+            PortalAsyncImage(
                 url = article.imageUrl,
-                contentDescription = null,
+                contentDescription = article.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+            // Multi-stop high contrast gradient overlay for pristine Bengali legibility
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0x001A1512), Color(0xCC1A1512)),
-                            startY = 120f,
-                            endY = Float.POSITIVE_INFINITY
+                            colors = listOf(
+                                Color(0x33000000),
+                                Color(0x11000000),
+                                Color(0x99100C09),
+                                Color(0xF5100C09)
+                            )
                         )
                     )
             )
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(EditorialSpace.md)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 if (article.categoryTitle.isNotBlank()) {
-                    Text(
-                        text = article.categoryTitle,
-                        style = EditorialType.Eyebrow,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-                    Spacer(Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = tokens.accent.copy(alpha = 0.92f),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Text(
+                            text = article.categoryTitle,
+                            style = EditorialType.Eyebrow.copy(
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
                 Text(
                     text = article.title,
-                    style = EditorialType.Headline,
+                    style = EditorialType.Headline.copy(
+                        fontSize = 19.sp,
+                        lineHeight = 27.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     color = Color.White,
-                    maxLines = 3,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(6.dp))
-                Byline(
-                    authorName = article.authorName,
-                    publishedDate = article.publishedDate,
-                    readingTimeMinutes = article.readingTimeMinutes,
-                    category = null
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (article.authorName.isNotBlank()) {
+                        Text(
+                            text = article.authorName,
+                            style = EditorialType.Caption.copy(fontWeight = FontWeight.Medium),
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                    if (article.publishedDate.isNotBlank()) {
+                        Text(
+                            text = "•  ${article.publishedDate}",
+                            style = EditorialType.Caption,
+                            color = Color.White.copy(alpha = 0.75f)
+                        )
+                    }
+                    if (article.readingTimeMinutes > 0) {
+                        Text(
+                            text = "•  ${article.readingTimeMinutes} মি.",
+                            style = EditorialType.Caption,
+                            color = Color.White.copy(alpha = 0.75f)
+                        )
+                    }
+                }
             }
         }
     }
@@ -690,7 +732,7 @@ fun CategoryVisualCard(
             )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            LazyImage(
+            PortalAsyncImage(
                 url = imageUrl,
                 contentDescription = category.title,
                 contentScale = ContentScale.Crop,
@@ -867,12 +909,11 @@ fun GalleryModalDialog(
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
                         val item = items[page]
-                        LazyImage(
+                        PortalAsyncImage(
                             url = item.imageUrl,
                             contentDescription = item.title,
                             contentScale = ContentScale.Fit,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
                         )
                     }
 

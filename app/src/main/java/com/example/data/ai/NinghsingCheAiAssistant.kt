@@ -90,9 +90,9 @@ class NinghsingCheAiAssistant(
             geminiAnswer
         } else if (ranked.isEmpty()) {
             // Nothing in the app data → clear "no information" + offer online.
-            buildNoInformation(query, knowledge, sync.usingLiveSite)
+            buildNoInformation(query, knowledge)
         } else {
-            buildAnswer(query, ranked, knowledge, sync.usingLiveSite)
+            buildAnswer(query, ranked, knowledge)
         }
 
         AiChatMessage(
@@ -117,8 +117,7 @@ class NinghsingCheAiAssistant(
         val text = if (!onlineAnswer.isNullOrBlank()) {
             onlineAnswer
         } else {
-            "দুঃখিত, অনলাইন থেকে তথ্য আনা যায়নি (AI কী কনফিগার করা নেই বা সংযোগ ব্যর্থ হয়েছে)। " +
-                "আপনি নিংশিংচে.কম ওয়েবসাইটে সরাসরি খুঁজে দেখতে পারেন, অথবা আবার চেষ্টা করুন।"
+            "দুঃখিত, অনলাইন থেকে তথ্য আনা যায়নি (AI কী কনফিগার করা নেই বা সংযোগ ব্যর্থ হয়েছে)। অনুগ্রহ করে পুনরায় চেষ্টা করুন।"
         }
 
         AiChatMessage(
@@ -369,10 +368,8 @@ class NinghsingCheAiAssistant(
     private fun buildAnswer(
         query: String,
         matches: List<Pair<Article, Int>>,
-        knowledge: Knowledge,
-        live: Boolean
+        knowledge: Knowledge
     ): String {
-        val source = if (live) "নিংশিংচে.কম থেকে সিঙ্ক করা লাইভ আর্কাইভ" else "অফলাইন আর্কাইভ"
         val top = matches.first().first
         val snippet = top.content.ifBlank { top.excerpt }
             .replace(Regex("""\s+"""), " ")
@@ -382,7 +379,7 @@ class NinghsingCheAiAssistant(
             "• ${article.title} — ${article.authorName} (${article.category})"
         }
         return buildString {
-            append("$source-এর ${knowledge.articles.size}টি প্রবন্ধ খুঁজে সবচেয়ে মিল থাকা লেখা: **${top.title}**।\n\n")
+            append("ডাটাবেজের ${knowledge.articles.size}টি প্রবন্ধ বিশ্লেষণ করে সবচেয়ে প্রাসঙ্গিক তথ্য: **${top.title}**।\n\n")
             if (snippet.isNotBlank()) {
                 append(snippet)
                 if (snippet.length >= 400) append("…")
@@ -390,26 +387,24 @@ class NinghsingCheAiAssistant(
             }
             append("লেখক: ${top.authorName}  •  বিভাগ: ${top.category}  •  ${top.publishedDate}\n")
             if (more.isNotBlank()) {
-                append("\nএই বিষয়ে আরও সিঙ্ক হওয়া প্রবন্ধ:\n")
+                append("\nএই বিষয়ে আরও সম্পর্কিত প্রবন্ধ:\n")
                 append(more)
             }
-            append("\n\nনিচে তথ্যসূত্র থেকে মূল প্রবন্ধ খুলুন।")
+            append("\n\nনিচে তথ্যসূত্র থেকে মূল প্রবন্ধ পড়তে পারেন।")
         }
     }
 
     private fun buildNoInformation(
         query: String,
-        knowledge: Knowledge,
-        live: Boolean
+        knowledge: Knowledge
     ): String {
-        val source = if (live) "লাইভ সিঙ্ক" else "অফলাইন ক্যাশ"
         val cats = knowledge.categories
             .take(6)
             .joinToString(" • ") { "${it.name} (${it.articleCount})" }
         return """
-            এই প্রশ্নের ("$query") উত্তর নিংশিং চে আর্কাইভে পাওয়া যায়নি — তথ্যভিত্তিক কোনো মিল পাওয়া যায়নি।
+            এই প্রশ্নের ("$query") উত্তর নিংশিং চে ডাটাবেজ আর্কাইভে সরাসরি পাওয়া যায়নি।
 
-            বর্তমানে $source-এ ${knowledge.articles.size}টি প্রবন্ধ, ${knowledge.authors.size}জন লেখক, ${knowledge.pdfs.size}টি PDF বই, ${knowledge.galleries.size}টি ছবি ও ${knowledge.videos.size}টি ভিডিও আছে।
+            বর্তমানে ডাটাবেজে ${knowledge.articles.size}টি প্রবন্ধ, ${knowledge.authors.size}জন লেখক, ${knowledge.pdfs.size}টি PDF বই, ${knowledge.galleries.size}টি ছবি ও ${knowledge.videos.size}টি ভিডিও সংরক্ষিত আছে।
             বিভাগসমূহ: ${cats.ifBlank { "সাধারণ" }}
 
             আপনি চাইলে আমি **অনলাইন থেকে** এই বিষয়ে তথ্য আনতে পারি — নিচের "অনলাইন থেকে তথ্য আনুন" বোতামে চাপ দিন।

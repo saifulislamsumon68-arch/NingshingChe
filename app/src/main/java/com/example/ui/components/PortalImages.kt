@@ -23,7 +23,6 @@ fun PortalAsyncImage(
         ImageRequest.Builder(context)
             .data(cleaned.ifBlank { NinghsingCheContentData.APP_LOGO_URL })
             .crossfade(true)
-            .addHeader("Referer", "https://ningshingche.com/")
             .addHeader("User-Agent", PORTAL_IMAGE_UA)
             .addHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
             .error(R.drawable.ic_ningshingche_logo)
@@ -40,10 +39,16 @@ fun PortalAsyncImage(
 
 fun normalizePortalImageUrl(raw: String?): String {
     if (raw.isNullOrBlank()) return ""
-    return raw.trim()
+    var url = raw.trim()
         .replace(" ", "%20")
         .replace("hyphenhyphen", "-")
+    if (url.startsWith("//")) {
+        url = "https:$url"
+    } else if (url.startsWith("http://", ignoreCase = true)) {
+        url = "https://" + url.substring(7)
+    }
+    return url
 }
 
-private const val PORTAL_IMAGE_UA =
+internal const val PORTAL_IMAGE_UA =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"

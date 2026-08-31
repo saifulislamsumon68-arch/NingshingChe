@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.core.animateDpAsState
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -355,21 +356,7 @@ fun HeroArticleCarousel(
     if (articles.isEmpty()) return
 
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { articles.size })
-
-    // Auto slide carousel smoothly
-    LaunchedEffect(pagerState.pageCount) {
-        if (pagerState.pageCount > 1) {
-            while (true) {
-                delay(4500L)
-                try {
-                    val next = (pagerState.currentPage + 1) % pagerState.pageCount
-                    pagerState.animateScrollToPage(next)
-                } catch (e: Exception) {
-                    // Ignore cancellation
-                }
-            }
-        }
-    }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -420,6 +407,11 @@ fun HeroArticleCarousel(
                             .width(width)
                             .clip(RoundedCornerShape(4.dp))
                             .background(color)
+                            .clickable {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(index)
+                                }
+                            }
                     )
                 }
             }
@@ -448,8 +440,8 @@ fun FeaturedArticleHeroCard(
                 .fillMaxWidth()
                 .height(248.dp)
         ) {
-            AsyncImage(
-                model = article.featuredImageUrl,
+            PortalAsyncImage(
+                url = article.featuredImageUrl,
                 contentDescription = article.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
