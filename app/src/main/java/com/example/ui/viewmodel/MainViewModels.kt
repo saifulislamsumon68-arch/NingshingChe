@@ -450,7 +450,8 @@ class AiViewModel(
         "মণিপুরি সমাজের ঐতিহ্যবাহী 'ইঞ্চৌঘর' কী?",
         "মণিপুরি সমাজে 'মিংকৌ' নামপ্রথা কী?",
         "বিশু উৎসব কীভাবে পালিত হয়?",
-        "শহীদ সুদেষ্ণা সিংহের আত্মত্যাগ সম্পর্কে বলুন"
+        "শহীদ সুদেষ্ণা সিংহের আত্মত্যাগ সম্পর্কে বলুন",
+        "মহারাস ও রাখাল রাসের বিশেষত্ব কী?"
     )
 
     fun sendQuestion(question: String) {
@@ -462,12 +463,16 @@ class AiViewModel(
             isUser = true
         )
 
-        _messages.value = _messages.value + userMessage
+        val currentHistory = _messages.value
+        _messages.value = currentHistory + userMessage
         _isLoading.value = true
 
         viewModelScope.launch {
             try {
-                val response = aiAssistant.answerQuestion(question)
+                val response = aiAssistant.answerQuestion(
+                    userQuestion = question,
+                    history = currentHistory
+                )
                 _messages.value = _messages.value + response
             } catch (e: Exception) {
                 _messages.value = _messages.value + AiChatMessage(

@@ -24,20 +24,11 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * The Ningshing Che AI assistant.
+ * The Ningshing Che AI Assistant.
  *
- * Answer strategy (in priority order):
- *  1. Learn from **everything loaded in the app** — articles, authors, categories,
- *     PDF books, gallery photos and videos — and rank them by relevance.
- *  2. Check the **article title first**: if a title matches the question (fully or
- *     partially) that article is promoted above every other match.
- *  3. If a Gemini API key is configured, use it to turn the ranked matches into a
- *     natural, well-reasoned Bengali answer grounded in those articles.
- *  4. If nothing in the app data matches, return a clear **"no information"** response
- *     and offer to fetch the answer **online** instead (user confirms in the UI).
- *
- * The assistant never introduces itself inside an answer — the opening greeting is a
- * one-time welcome message owned by the ViewModel, not the model.
+ * Highly capable, grounded AI scholar powered by gemini-3.5-flash with deep
+ * specialization in Bishnupriya Manipuri language, literature, culture, history,
+ * arts, personalities, and the Supabase digital archive.
  */
 class NinghsingCheAiAssistant(
     private val repository: ArticleRepository,
@@ -46,15 +37,14 @@ class NinghsingCheAiAssistant(
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(35, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .build()
     }
 
     /**
-     * A snapshot of everything the app has loaded, so the AI can reason across the
-     * whole local knowledge base rather than only article rows.
+     * Complete local knowledge snapshot loaded from Supabase database.
      */
     private data class Knowledge(
         val articles: List<Article>,
@@ -65,10 +55,12 @@ class NinghsingCheAiAssistant(
         val videos: List<VideoItem>
     )
 
-    suspend fun answerQuestion(userQuestion: String): AiChatMessage = withContext(Dispatchers.IO) {
+    suspend fun answerQuestion(
+        userQuestion: String,
+        history: List<AiChatMessage> = emptyList()
+    ): AiChatMessage = withContext(Dispatchers.IO) {
         val query = userQuestion.trim()
         val knowledge = loadKnowledge()
-        val sync = repository.syncState.value
 
         val tokens = tokenize(query)
         val ranked = rank(query, tokens, knowledge)
@@ -79,17 +71,15 @@ class NinghsingCheAiAssistant(
                 title = article.title,
                 author = article.authorName,
                 category = article.category,
-                snippet = article.excerpt.ifBlank { article.content.take(140) }
+                snippet = article.excerpt.ifBlank { article.content.take(160) }
             )
         }.distinctBy { it.articleId }
 
-        // Try Gemini first when we have relevant material.
-        val geminiAnswer = tryCallGemini(query, ranked, knowledge)
-        val noLocalMatch = ranked.isEmpty() && geminiAnswer.isNullOrBlank()
+        // Call Gemini 3.5 Flash with full conversation history and grounded knowledge
+        val geminiAnswer = tryCallGemini(query, ranked, knowledge, history)
         val finalAnswer = if (!geminiAnswer.isNullOrBlank()) {
             geminiAnswer
         } else if (ranked.isEmpty()) {
-            // Nothing in the app data → clear "no information" + offer online.
             buildNoInformation(query, knowledge)
         } else {
             buildAnswer(query, ranked, knowledge)
@@ -101,14 +91,12 @@ class NinghsingCheAiAssistant(
             isUser = false,
             timestamp = System.currentTimeMillis(),
             citations = citations,
-            offerOnline = noLocalMatch
+            offerOnline = false
         )
     }
 
     /**
-     * Called after the user confirms they want an online answer. Uses Gemini's
-     * web-search tool so the model can pull fresh information from the internet,
-     * then answers in Bengali. Falls back gracefully when no key is configured.
+     * Web-grounded query for external or live updates.
      */
     suspend fun answerOnline(userQuestion: String): AiChatMessage = withContext(Dispatchers.IO) {
         val query = userQuestion.trim()
@@ -156,10 +144,6 @@ class NinghsingCheAiAssistant(
 
     // ------------------------------------------------------------------ ranking
 
-    /**
-     * Ranks the knowledge base. Title matches always float to the top, so asking for
-     * "ভাষা আন্দোলন" surfaces the article literally titled that first.
-     */
     private fun rank(
         query: String,
         tokens: List<String>,
@@ -194,19 +178,20 @@ class NinghsingCheAiAssistant(
         val meta = "${article.category} ${article.authorName} ${article.publishedDate}"
         var points = 0
 
-        // Title-first: exact or full-containment match dominates.
         val q = raw.lowercase()
         val t = title.lowercase()
-        if (t == q) points += 120
-        else if (t.contains(q) || q.contains(t)) points += 70
+        if (t == q) points += 140
+        else if (t.contains(q) || q.contains(t)) points += 80
 
-        if (excerpt.contains(raw, ignoreCase = true)) points += 6
+        if (excerpt.contains(raw, ignoreCase = true)) points += 15
+        if (tags.contains(raw, ignoreCase = true)) points += 12
+
         tokens.forEach { token ->
-            if (title.contains(token, ignoreCase = true)) points += 8
-            if (tags.contains(token, ignoreCase = true)) points += 4
-            if (excerpt.contains(token, ignoreCase = true)) points += 3
-            if (meta.contains(token, ignoreCase = true)) points += 2
-            if (content.contains(token, ignoreCase = true)) points += 1
+            if (title.contains(token, ignoreCase = true)) points += 10
+            if (tags.contains(token, ignoreCase = true)) points += 6
+            if (excerpt.contains(token, ignoreCase = true)) points += 4
+            if (meta.contains(token, ignoreCase = true)) points += 3
+            if (content.contains(token, ignoreCase = true)) points += 2
         }
         return points
     }
@@ -220,68 +205,120 @@ class NinghsingCheAiAssistant(
     private fun isKeyConfigured(key: String): Boolean =
         key.isNotBlank() && !key.startsWith("AIzaSyDummy")
 
-    /** Grounded answer build from the top local matches. */
+    /**
+     * Primary grounded reasoning call to Gemini 3.5 Flash.
+     */
     private fun tryCallGemini(
         query: String,
         ranked: List<Pair<Article, Int>>,
-        knowledge: Knowledge
+        knowledge: Knowledge,
+        history: List<AiChatMessage>
     ): String? {
         val apiKey = geminiKey()
         if (!isKeyConfigured(apiKey)) return null
 
         return try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
 
-            val contextText = buildString {
+            val archiveContext = buildString {
                 if (ranked.isNotEmpty()) {
-                    append("নিংশিং চে আর্কাইভের সবচেয়ে প্রাসঙ্গিক নিবন্ধসমূহ:\n")
-                    append(ranked.take(4).joinToString("\n---\n") { (article, _) ->
-                        "শিরোনাম: ${article.title}\n" +
-                            "লেখক: ${article.authorName}\n" +
-                            "বিভাগ: ${article.category}\n" +
-                            "ট্যাগ: ${article.tags.joinToString(", ")}\n" +
-                            "সারসংক্ষেপ: ${article.excerpt.ifBlank { article.content.take(400) }}"
+                    append("### নিংশিং চে ডাটাবেজের প্রাসঙ্গিক নিবন্ধসমূহ:\n")
+                    append(ranked.take(5).joinToString("\n---\n") { (article, _) ->
+                        val bodySnippet = if (article.content.isNotBlank()) {
+                            article.content.take(800)
+                        } else {
+                            article.excerpt
+                        }
+                        "**শিরোনাম:** ${article.title}\n" +
+                            "**লেখক:** ${article.authorName}\n" +
+                            "**বিভাগ:** ${article.category}\n" +
+                            "**ট্যাগ:** ${article.tags.joinToString(", ")}\n" +
+                            "**মূল পাঠ্যাংশ/সারসংক্ষেপ:** $bodySnippet"
                     })
                 }
-                val authors = knowledge.authors.take(4).joinToString("\n") {
-                    "লেখক: ${it.name} — ${it.designation} • ${it.bio.take(120)}"
+
+                val relevantAuthors = knowledge.authors
+                    .filter { author -> query.contains(author.name, ignoreCase = true) || ranked.any { it.first.authorName == author.name } }
+                    .take(3)
+                if (relevantAuthors.isNotEmpty()) {
+                    append("\n\n### সম্পর্কিত লেখক পরিচিতি:\n")
+                    append(relevantAuthors.joinToString("\n") {
+                        "- **${it.name}**: ${it.designation} (${it.bio.take(150)})"
+                    })
                 }
-                if (authors.isNotBlank()) append("\n\nলেখক পরিচিতি:\n$authors")
-                val cats = knowledge.categories.take(4).joinToString("\n") {
-                    "বিভাগ: ${it.name} — ${it.description.take(120)}"
+
+                val relevantPdfs = knowledge.pdfs
+                    .filter { pdf -> tokensMatched(pdf.title, query) }
+                    .take(3)
+                if (relevantPdfs.isNotEmpty()) {
+                    append("\n\n### সংশ্লিষ্ট বই/ই-বুক তালিকা:\n")
+                    append(relevantPdfs.joinToString("\n") {
+                        "- **${it.title}** (লেখক/সম্পাদক: ${it.authorOrEditor}, প্রকাশকাল: ${it.year})"
+                    })
                 }
-                if (cats.isNotBlank()) append("\n\nবিভাগসমূহ:\n$cats")
             }
 
-            val prompt = """
-                ব্যবহারকারীর প্রশ্ন: $query
+            val userPromptWithContext = buildString {
+                if (archiveContext.isNotBlank()) {
+                    append(archiveContext)
+                    append("\n\n---\n")
+                }
+                append("ব্যবহারকারীর প্রশ্ন: $query")
+            }
 
-                $contextText
+            // Build multi-turn conversational contents
+            val contentsArray = JSONArray()
 
-                নির্দেশনা:
-                ১. প্রদত্ত নিংশিং চে নিবন্ধ ও তথ্যের ভিত্তিতে সংক্ষিপ্ত, সঠিক ও যুক্তিযুক্ত উত্তর দিন।
-                ২. উত্তরটি কখনোই 'আমি নিংশিং চে AI সহকারী...' বা অনুরূপ আত্মপরিচয় দিয়ে শুরু করবেন না — সরাসরি প্রশ্নের উত্তর দিন।
-                ৩. যদি কোনো নিবন্ধে প্রাসঙ্গিক তথ্য থাকে, সেই নিবন্ধের শিরোনামটি উল্লেখ করে সূত্র দিন (সূত্র: "শিরোনাম")।
-                ৪. সুন্দর, সাবলীল ও তথ্যবহুল বাংলায় লিখুন।
-                ৫. যদি প্রদত্ত তথ্যে উত্তর না পাওয়া যায়, স্পষ্টভাবে বলুন 'নিংশিং চে আর্কাইভে এই বিষয়ে তথ্য পাওয়া যায়নি'।
-            """.trimIndent()
+            val recentHistory = history
+                .filter { it.id != "welcome" }
+                .takeLast(6)
 
-            val jsonBody = JSONObject().apply {
-                put("contents", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("parts", JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("text", prompt)
-                            })
+            recentHistory.forEach { msg ->
+                val role = if (msg.isUser) "user" else "model"
+                contentsArray.put(JSONObject().apply {
+                    put("role", role)
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("text", msg.text)
                         })
                     })
                 })
+            }
+
+            // Append current prompt
+            contentsArray.put(JSONObject().apply {
+                put("role", "user")
+                put("parts", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("text", userPromptWithContext)
+                    })
+                })
+            })
+
+            val systemInstructionText = """
+                You are 'Ninghsing Che AI' (নিংশিং চে এআই), a highly capable, knowledgeable, and trained AI expert specializing in Bishnupriya Manipuri language, literature, culture, history, heritage, arts, personalities, festivals, and general knowledge.
+
+                Guidelines for your responses:
+                1. Provide comprehensive, deeply informative, and intellectually rich answers in elegant Bengali.
+                2. Structure your response clearly using clean Markdown formatting with headers (###), bold key terms, organized bullet points, and numbered lists where suitable.
+                3. When relevant archive articles or authors are provided in the context, synthesize their facts accurately and cite them seamlessly (e.g. সূত্র: "প্রবন্ধের শিরোনাম" — লেখক: লেখকের নাম).
+                4. If the question asks about Bishnupriya Manipuri culture (e.g., Inchaughar, Minkou, Language Movement, Sudeshna Sinha, Bishu festival, Rasleela, poetry, folklore, grammar), deliver a thorough, historically accurate, and culturally authentic explanation.
+                5. If the question is a general knowledge, translation, literary, or analytical inquiry, answer it with full depth, accuracy, and clarity.
+                6. Do NOT start your reply with repetitive self-introductions (e.g. "আমি নিংশিং চে AI..."). Dive straight into the authoritative, well-reasoned answer.
+            """.trimIndent()
+
+            val jsonBody = JSONObject().apply {
+                put("contents", contentsArray)
                 put("systemInstruction", JSONObject().apply {
                     put("parts", JSONArray().apply {
                         put(JSONObject().apply {
-                            put("text", "You are an expert on Bishnupriya Manipuri literature, language, culture and the Ningshing Che archive. Answer directly and never introduce yourself.")
+                            put("text", systemInstructionText)
                         })
                     })
+                })
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.6)
+                    put("topP", 0.95)
                 })
             }
 
@@ -307,17 +344,23 @@ class NinghsingCheAiAssistant(
         }
     }
 
-    /** General-knowledge answer with Google web-search grounding (online fetch). */
+    private fun tokensMatched(text: String, query: String): Boolean {
+        val qTokens = tokenize(query)
+        return qTokens.any { token -> text.contains(token, ignoreCase = true) }
+    }
+
+    /** General-knowledge answer with Google web-search grounding. */
     private fun tryCallGeminiWebSearch(query: String): String? {
         val apiKey = geminiKey()
         if (!isKeyConfigured(apiKey)) return null
 
         return try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
 
             val jsonBody = JSONObject().apply {
                 put("contents", JSONArray().apply {
                     put(JSONObject().apply {
+                        put("role", "user")
                         put("parts", JSONArray().apply {
                             put(JSONObject().apply {
                                 put("text", query)
@@ -325,7 +368,6 @@ class NinghsingCheAiAssistant(
                         })
                     })
                 })
-                // Enable Google Search grounding so the model can browse the web.
                 put("tools", JSONArray().apply {
                     put(JSONObject().apply {
                         put("googleSearch", JSONObject())
@@ -334,7 +376,7 @@ class NinghsingCheAiAssistant(
                 put("systemInstruction", JSONObject().apply {
                     put("parts", JSONArray().apply {
                         put(JSONObject().apply {
-                            put("text", "Answer the user's question in clear, correct Bengali. Cite any sources you used. Never introduce yourself.")
+                            put("text", "You are Ninghsing Che AI. Answer in articulate, natural Bengali with structured Markdown. Do not introduce yourself.")
                         })
                     })
                 })
@@ -363,7 +405,7 @@ class NinghsingCheAiAssistant(
         }
     }
 
-    // ------------------------------------------------------------------ answers
+    // ------------------------------------------------------------------ fallback
 
     private fun buildAnswer(
         query: String,
@@ -373,24 +415,24 @@ class NinghsingCheAiAssistant(
         val top = matches.first().first
         val snippet = top.content.ifBlank { top.excerpt }
             .replace(Regex("""\s+"""), " ")
-            .take(420)
+            .take(450)
             .trim()
         val more = matches.drop(1).take(3).joinToString("\n") { (article, _) ->
-            "• ${article.title} — ${article.authorName} (${article.category})"
+            "• **${article.title}** — ${article.authorName} (${article.category})"
         }
         return buildString {
-            append("ডাটাবেজের ${knowledge.articles.size}টি প্রবন্ধ বিশ্লেষণ করে সবচেয়ে প্রাসঙ্গিক তথ্য: **${top.title}**।\n\n")
+            append("### ${top.title}\n\n")
             if (snippet.isNotBlank()) {
                 append(snippet)
                 if (snippet.length >= 400) append("…")
                 append("\n\n")
             }
-            append("লেখক: ${top.authorName}  •  বিভাগ: ${top.category}  •  ${top.publishedDate}\n")
+            append("**লেখক:** ${top.authorName} | **বিভাগ:** ${top.category} | **প্রকাশকাল:** ${top.publishedDate}\n")
             if (more.isNotBlank()) {
-                append("\nএই বিষয়ে আরও সম্পর্কিত প্রবন্ধ:\n")
+                append("\n#### এই বিষয়ে আরও প্রাসঙ্গিক প্রবন্ধ:\n")
                 append(more)
             }
-            append("\n\nনিচে তথ্যসূত্র থেকে মূল প্রবন্ধ পড়তে পারেন।")
+            append("\n\n_নিচে তথ্যসূত্র কার্ড থেকে মূল প্রবন্ধ পড়তে পারেন।_")
         }
     }
 
@@ -402,12 +444,13 @@ class NinghsingCheAiAssistant(
             .take(6)
             .joinToString(" • ") { "${it.name} (${it.articleCount})" }
         return """
-            এই প্রশ্নের ("$query") উত্তর নিংশিং চে ডাটাবেজ আর্কাইভে সরাসরি পাওয়া যায়নি।
+            এই প্রশ্নের ("$query") সাথে সরাসরি সম্পর্কিত কোনো প্রবন্ধ ডাটাবেজে চিহ্নিত করা যায়নি।
 
-            বর্তমানে ডাটাবেজে ${knowledge.articles.size}টি প্রবন্ধ, ${knowledge.authors.size}জন লেখক, ${knowledge.pdfs.size}টি PDF বই, ${knowledge.galleries.size}টি ছবি ও ${knowledge.videos.size}টি ভিডিও সংরক্ষিত আছে।
-            বিভাগসমূহ: ${cats.ifBlank { "সাধারণ" }}
+            বর্তমানে নিংশিং চে ডাটাবেজে **${knowledge.articles.size}টি প্রবন্ধ**, **${knowledge.authors.size}জন লেখক**, **${knowledge.pdfs.size}টি PDF বই**, এবং বহু ফটো-ভিডিও আর্কাইভ সংরক্ষিত আছে।
 
-            আপনি চাইলে আমি **অনলাইন থেকে** এই বিষয়ে তথ্য আনতে পারি — নিচের "অনলাইন থেকে তথ্য আনুন" বোতামে চাপ দিন।
+            **প্রধান বিভাগসমূহ:** ${cats.ifBlank { "সাধারণ" }}
+
+            আপনি চাইলে কোনো নির্দিষ্ট লেখক, উৎসব (যেমন বিষু, রাস), ভাষা আন্দোলন, ঐতিহ্য বা প্রবন্ধের শিরোনাম দিয়ে প্রশ্ন করতে পারেন।
         """.trimIndent()
     }
 }
